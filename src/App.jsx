@@ -238,14 +238,46 @@ function HBar({ label, value, max, color = "#c4a262" }) {
 }
 
 // ─── Client Presentation View ──────────────────────────────────────
-function ClientPresentation({ inputs, results, onBack }) {
+function ClientPresentation({ inputs, results, onBack, sharedMode, sharedData, onBuildShareUrl }) {
   const printRef = useRef(null);
-  const settled = inputs.settledDealPrice || results.calculatedDealPrice;
+  const [copied, setCopied] = useState(false);
+
+  // In shared mode, use the frozen data from the URL; otherwise use live calculations
+  const isShared = sharedMode && sharedData;
+  const display = isShared ? {
+    clientName: sharedData.cn || "Client",
+    projectAddress: sharedData.pa || "",
+    repName: sharedData.rn || "",
+    projectType: sharedData.pt || "",
+    dateCreated: sharedData.dc || "",
+    insuranceEstimate: sharedData.ie || 0,
+    deductible: sharedData.ded || 0,
+    cashToClient: sharedData.ctc || 0,
+    clientOutOfPocket: sharedData.cop || 0,
+    settledDealPrice: sharedData.sdp || 0,
+    laborEstimate: sharedData.le || 0,
+    materialEstimate: sharedData.me || 0,
+    squares: sharedData.sq || 0,
+  } : {
+    clientName: inputs.clientName,
+    projectAddress: inputs.projectAddress,
+    repName: inputs.repName,
+    projectType: inputs.projectType,
+    dateCreated: inputs.dateCreated,
+    insuranceEstimate: results.insuranceEstimate,
+    deductible: inputs.deductible,
+    cashToClient: results.cashToClient,
+    clientOutOfPocket: results.clientOutOfPocket,
+    settledDealPrice: inputs.settledDealPrice || results.calculatedDealPrice,
+    laborEstimate: inputs.laborEstimate,
+    materialEstimate: inputs.materialEstimate,
+    squares: inputs.squares,
+  };
 
   const handlePrint = () => {
     const content = printRef.current;
     const win = window.open("", "_blank");
-    win.document.write(`<!DOCTYPE html><html><head><title>Project Estimate - ${inputs.clientName || "Client"}</title>
+    win.document.write(`<!DOCTYPE html><html><head><title>Project Estimate - ${display.clientName || "Client"}</title>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -256,6 +288,18 @@ function ClientPresentation({ inputs, results, onBack }) {
     setTimeout(() => { win.print(); }, 600);
   };
 
+  const handleShare = () => {
+    const shareUrl = isShared ? window.location.href : onBuildShareUrl();
+    if (navigator.share) {
+      navigator.share({ title: `Estimate - ${display.clientName}`, text: `Project estimate for ${display.projectAddress}`, url: shareUrl });
+    } else {
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      });
+    }
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: "#fdfcf9" }}>
       {/* Top Bar */}
@@ -264,24 +308,27 @@ function ClientPresentation({ inputs, results, onBack }) {
         backdropFilter: "blur(12px)", borderBottom: "1px solid #e8e2d4",
         padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center"
       }}>
-        <button onClick={onBack} style={{
-          background: "none", border: "none", cursor: "pointer",
-          fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 14, color: "#c4a262",
-          display: "flex", alignItems: "center", gap: 6
-        }}>← Back</button>
+        {isShared ? (
+          <div style={{
+            fontFamily: "'DM Serif Display', serif", fontSize: 16, color: "#c4a262",
+            letterSpacing: "0.04em"
+          }}>FORTRESS</div>
+        ) : (
+          <button onClick={onBack} style={{
+            background: "none", border: "none", cursor: "pointer",
+            fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 14, color: "#c4a262",
+            display: "flex", alignItems: "center", gap: 6
+          }}>← Back</button>
+        )}
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => {
-            if (navigator.share) {
-              navigator.share({ title: `Estimate - ${inputs.clientName}`, text: `Project estimate for ${inputs.projectAddress}`, url: window.location.href });
-            } else {
-              navigator.clipboard.writeText(window.location.href);
-              alert("Link copied to clipboard!");
-            }
-          }} style={{
+          <button onClick={handleShare} style={{
             padding: "8px 16px", borderRadius: 8, border: "1.5px solid #c4a262",
-            background: "none", color: "#c4a262", fontWeight: 600, fontSize: 13,
-            cursor: "pointer", fontFamily: "'DM Sans', sans-serif"
-          }}>Share</button>
+            background: copied ? "#e8f5ec" : "none",
+            color: copied ? "#4a7c59" : "#c4a262",
+            fontWeight: 600, fontSize: 13,
+            cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+            transition: "all 0.3s"
+          }}>{copied ? "✓ Copied!" : "Share"}</button>
           <button onClick={handlePrint} style={{
             padding: "8px 16px", borderRadius: 8, border: "none",
             background: "#c4a262", color: "#fff", fontWeight: 600, fontSize: 13,
@@ -303,13 +350,13 @@ function ClientPresentation({ inputs, results, onBack }) {
           <h1 style={{
             fontFamily: "'DM Serif Display', serif", fontSize: 32, fontWeight: 400,
             color: "#2d2a24", lineHeight: 1.2, marginBottom: 8
-          }}>{inputs.clientName || "Client Name"}</h1>
+          }}>{display.clientName || "Client Name"}</h1>
           <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15, color: "#8a7e6b" }}>
-            {inputs.projectAddress || "Project Address"}
+            {display.projectAddress || "Project Address"}
           </p>
           <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: "#b5a98a", marginTop: 6 }}>
-            {inputs.projectType && `${inputs.projectType} • `}Prepared {inputs.dateCreated || new Date().toLocaleDateString()}
-            {inputs.repName && ` • Rep: ${inputs.repName}`}
+            {display.projectType && `${display.projectType} • `}Prepared {display.dateCreated || new Date().toLocaleDateString()}
+            {display.repName && ` • Rep: ${display.repName}`}
           </p>
         </div>
 
@@ -322,10 +369,10 @@ function ClientPresentation({ inputs, results, onBack }) {
             Project Summary
           </h2>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
-            <MetricCard label="Insurance Estimate" value={results.insuranceEstimate} color="#5a7c8a" small />
-            <MetricCard label="Deductible" value={inputs.deductible} color="#a65d57" small />
-            <MetricCard label="Cash to You" value={results.cashToClient} color="#4a7c59" small />
-            <MetricCard label="Your Investment" value={results.clientOutOfPocket} color="#c4a262" small />
+            <MetricCard label="Insurance Estimate" value={display.insuranceEstimate} color="#5a7c8a" small />
+            <MetricCard label="Deductible" value={display.deductible} color="#a65d57" small />
+            <MetricCard label="Cash to You" value={display.cashToClient} color="#4a7c59" small />
+            <MetricCard label="Your Investment" value={display.clientOutOfPocket} color="#c4a262" small />
           </div>
         </div>
 
@@ -337,11 +384,11 @@ function ClientPresentation({ inputs, results, onBack }) {
           <h2 style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, fontWeight: 700, color: "#8a7e6b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 20 }}>
             Cost Breakdown
           </h2>
-          <ResultLine label="Project Price" value={settled} bold />
-          <ResultLine label="Insurance Pays" value={results.cashToClient} />
-          <ResultLine label="Your Deductible" value={inputs.deductible} />
+          <ResultLine label="Project Price" value={display.settledDealPrice} bold />
+          <ResultLine label="Insurance Pays" value={display.cashToClient} />
+          <ResultLine label="Your Deductible" value={display.deductible} />
           <div style={{ height: 1, background: "#c4a26244", margin: "12px 0" }} />
-          <ResultLine label="Your Out-of-Pocket" value={results.clientOutOfPocket} bold highlight />
+          <ResultLine label="Your Out-of-Pocket" value={display.clientOutOfPocket} bold highlight />
         </div>
 
         {/* What's Included */}
@@ -355,17 +402,17 @@ function ClientPresentation({ inputs, results, onBack }) {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
             <div style={{ flex: "1 1 45%", padding: "14px 16px", background: "#f8f6f0", borderRadius: 12, textAlign: "center" }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: "#8a7e6b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>Labor</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "#2d2a24", fontFamily: "'DM Mono', monospace" }}>{fmt(inputs.laborEstimate)}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#2d2a24", fontFamily: "'DM Mono', monospace" }}>{fmt(display.laborEstimate)}</div>
             </div>
             <div style={{ flex: "1 1 45%", padding: "14px 16px", background: "#f8f6f0", borderRadius: 12, textAlign: "center" }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: "#8a7e6b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>Materials</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "#2d2a24", fontFamily: "'DM Mono', monospace" }}>{fmt(inputs.materialEstimate)}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#2d2a24", fontFamily: "'DM Mono', monospace" }}>{fmt(display.materialEstimate)}</div>
             </div>
           </div>
-          {inputs.squares > 0 && (
+          {display.squares > 0 && (
             <div style={{ marginTop: 16, padding: "12px 16px", background: "#f0ebe0", borderRadius: 10, textAlign: "center" }}>
               <span style={{ fontSize: 13, color: "#5a5347", fontFamily: "'DM Sans', sans-serif" }}>
-                <strong>{inputs.squares}</strong> squares total
+                <strong>{display.squares}</strong> squares total
               </span>
             </div>
           )}
@@ -383,9 +430,33 @@ function ClientPresentation({ inputs, results, onBack }) {
   );
 }
 
+// ─── URL Data Encoding (client-safe fields only) ───────────────────
+function encodeClientData(inputs, results) {
+  const clientData = {
+    cn: inputs.clientName, pa: inputs.projectAddress, rn: inputs.repName,
+    pt: inputs.projectType, dc: inputs.dateCreated,
+    ie: results.insuranceEstimate, ded: inputs.deductible,
+    ctc: results.cashToClient, cop: results.clientOutOfPocket,
+    sdp: inputs.settledDealPrice || results.calculatedDealPrice,
+    le: inputs.laborEstimate, me: inputs.materialEstimate,
+    sq: inputs.squares,
+  };
+  try {
+    return btoa(encodeURIComponent(JSON.stringify(clientData)));
+  } catch { return ""; }
+}
+
+function decodeClientData(encoded) {
+  try {
+    return JSON.parse(decodeURIComponent(atob(encoded)));
+  } catch { return null; }
+}
+
 // ─── Main App ──────────────────────────────────────────────────────
 export default function FortressDealAnalyzer() {
-  const [view, setView] = useState("input"); // input | analysis | client
+  const [view, setView] = useState("input");
+  const [sharedMode, setSharedMode] = useState(false);
+  const [sharedData, setSharedData] = useState(null);
   const [inputs, setInputs] = useState({
     clientName: "", projectAddress: "", repName: "", projectType: "Roof Replacement",
     dateCreated: new Date().toISOString().split("T")[0],
@@ -397,8 +468,28 @@ export default function FortressDealAnalyzer() {
     supplementCostRate: 0.085, commissionRate: 0.10, squares: 0,
   });
 
+  // On mount, check URL for shared client data
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const d = params.get("d");
+    if (d) {
+      const decoded = decodeClientData(d);
+      if (decoded) {
+        setSharedData(decoded);
+        setSharedMode(true);
+        setView("client");
+      }
+    }
+  }, []);
+
   const update = (key) => (val) => setInputs((p) => ({ ...p, [key]: val }));
   const results = calculate(inputs);
+
+  // ─── SHARED MODE GUARD: lock to client view only ─────────────────
+  if (sharedMode && view !== "client") {
+    setView("client");
+    return null;
+  }
 
   // ─── INPUT VIEW ─────────────────────────────────────────────────
   if (view === "input") {
@@ -711,10 +802,23 @@ export default function FortressDealAnalyzer() {
 
   // ─── CLIENT VIEW ────────────────────────────────────────────────
   if (view === "client") {
+    const buildShareUrl = () => {
+      const encoded = encodeClientData(inputs, results);
+      const base = window.location.origin + window.location.pathname;
+      return `${base}?d=${encoded}`;
+    };
+
     return (
       <>
         <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
-        <ClientPresentation inputs={inputs} results={results} onBack={() => setView("analysis")} />
+        <ClientPresentation
+          inputs={inputs}
+          results={results}
+          onBack={() => setView("analysis")}
+          sharedMode={sharedMode}
+          sharedData={sharedData}
+          onBuildShareUrl={buildShareUrl}
+        />
       </>
     );
   }
